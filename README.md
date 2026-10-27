@@ -1,7 +1,7 @@
 # claude-code-workstation
 
-[![SAST](https://github.com/barnabys-drew/claude-code-workstation/actions/workflows/sast.yml/badge.svg)](https://github.com/barnabys-drew/claude-code-workstation/actions/workflows/sast.yml)
-[![Dependencies](https://github.com/barnabys-drew/claude-code-workstation/actions/workflows/deps.yml/badge.svg)](https://github.com/barnabys-drew/claude-code-workstation/actions/workflows/deps.yml)
+[![SAST](https://github.com/barnabys-drew/claude-code-workstation/actions/workflows/sast.yml/badge.svg?branch=main)](https://github.com/barnabys-drew/claude-code-workstation/actions/workflows/sast.yml)
+[![Dependencies](https://github.com/barnabys-drew/claude-code-workstation/actions/workflows/deps.yml/badge.svg?branch=main)](https://github.com/barnabys-drew/claude-code-workstation/actions/workflows/deps.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 The setup I use to run several [Claude Code](https://claude.com/claude-code)
