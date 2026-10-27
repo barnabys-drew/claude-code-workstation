@@ -7,6 +7,7 @@ import { C, icons, key, text } from "../src/keys.ts";
 
 const out = "dev.workstation.deck.sdPlugin";
 mkdirSync(`${out}/bin`, { recursive: true });
+mkdirSync(`${out}/imgs`, { recursive: true });
 
 await build({
 	entryPoints: ["src/plugin.ts"],

@@ -136,7 +136,8 @@ class CDP:
     never navigates any of the user's own tabs."""
 
     def __init__(self, timeout=10):
-        with urllib.request.urlopen(CDP_URL + "/json/version", timeout=3) as r:
+        # CDP_URL is a hardcoded loopback http:// constant, never user input.
+        with urllib.request.urlopen(CDP_URL + "/json/version", timeout=3) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             ws_url = json.load(r)["webSocketDebuggerUrl"]
         path = "/" + ws_url.split("/", 3)[3]
         self.sock = socket.create_connection(("127.0.0.1", CDP_PORT), timeout=timeout)
