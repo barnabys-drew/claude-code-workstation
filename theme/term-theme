@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Flip WezTerm (all Herdr panes) and Windows Terminal between light and dark.
+# Claude Code gets an ansi theme that follows the terminal palette: dark-ansi in
+# dark mode, custom:paper (~/.claude/themes/paper.json) in light mode. Paper is
+# light-ansi with its prompt/bash/memory backgrounds set to the bone paper, since
+# light-ansi paints them ansi:white/whiteBright, which this palette makes near-black.
+# Herdr's own chrome (sidebar, tabs) stays pine in both modes.
+# Usage: term-theme light|dark|status
+set -euo pipefail
+# Windows home as a WSL path. Herdr panes have no Windows PATH, so cmd.exe is
+# called by absolute path. Set WIN_HOME to skip the lookup.
+WIN_HOME=${WIN_HOME:-$(wslpath "$(/mnt/c/Windows/System32/cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')")}
+export WIN_HOME
+WEZ=${WEZTERM_CONFIG:-$WIN_HOME/.wezterm.lua}
+SETTINGS=$HOME/.claude/settings.json
+HERDR=$HOME/.config/herdr/config.toml
+mode=${1:-status}
+case "$mode" in
+  light|dark)
+    sed -i "s/^local mode = '[a-z]*'/local mode = '$mode'/" "$WEZ"
+    # Claude's built-in "light" theme uses fixed colours that wash out on the bone paper.
+    if [ "$mode" = light ]; then ctheme=custom:paper; else ctheme=dark-ansi; fi
+    sed -i "s/^\(  \"theme\": *\)\"[^\"]*\"/\1\"$ctheme\"/" "$SETTINGS"
+    python3 -I - "$mode" <<'PY'
+import json,sys
+mode=sys.argv[1]
+# Herdr's chrome is fixed in both modes (see [theme.custom] in its config.toml).
+# Windows Terminal: keep its "Monokai Cursor" scheme in step with the WezTerm palette
+import os
+wt=os.environ['WIN_HOME']+'/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json'
+pal={
+ 'light':dict(background='#DCD6C5',foreground='#2B2F28',cursorColor='#2B2F28',selectionBackground='#C3CFB0',
+   black='#2B2F28',red='#B5452F',green='#4F7D2A',yellow='#9A7B2E',blue='#2F6E5E',purple='#8A5A3C',cyan='#3C7F6A',white='#4A5046',
+   brightBlack='#5F665A',brightRed='#C85A40',brightGreen='#5E9433',brightYellow='#B08C3A',brightBlue='#3B8372',brightPurple='#A06C4A',brightCyan='#4A9682',brightWhite='#2B2F28'),
+ 'dark':dict(background='#1B2A20',foreground='#EDE6D6',cursorColor='#F4EFE2',selectionBackground='#34493A',
+   black='#2A3B2F',red='#E07A5F',green='#B5D86B',yellow='#D4B483',blue='#8FC9B0',purple='#D9A989',cyan='#BFE3CE',white='#EDE6D6',
+   brightBlack='#8E9B88',brightRed='#EE937A',brightGreen='#C9EA7E',brightYellow='#E3C898',brightBlue='#A8DCC5',brightPurple='#E6BBA0',brightCyan='#D4EEDD',brightWhite='#F7F4EC'),
+}[mode]
+try:
+    w=json.load(open(wt,encoding='utf-8-sig'))
+    for sc in w.get('schemes',[]):
+        if sc.get('name')=='Monokai Cursor': sc.update(pal)
+    json.dump(w,open(wt,'w',encoding='utf-8'),indent=4)
+except Exception as e:
+    print('windows terminal not updated:',e)
+PY
+    echo "terminal: $mode"
+    if [ "${2:-}" = "--restart" ]; then
+      # Herdr's server caches the host background it saw at startup and paints it
+      # into Claude panes, so a mode switch is only complete after a server restart.
+      # Delay it so the caller (a Claude pane this restart will kill) can print first.
+      systemd-run --user --quiet --on-active=4 --unit="herdr-restart-$(date +%s)" \
+        systemctl --user restart herdr
+      echo "herdr restarts in 4s: type  herdr  in the shell that appears"
+    fi
+    ;;
+  status)
+    grep -o "^local mode = '[a-z]*'" "$WEZ"; grep -o '"theme": *"[^"]*"' "$SETTINGS"; grep -m1 "^sidebar_bg" "$HERDR"
+    ;;
+  *) echo "usage: term-theme light|dark|status" >&2; exit 2;;
+esac

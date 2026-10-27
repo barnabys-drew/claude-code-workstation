@@ -1,0 +1,26 @@
+{
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+	"Name": "Workstation Deck",
+	"UUID": "dev.workstation.deck",
+	"Version": "0.1.0.0",
+	"Author": "barnabys-drew",
+	"Description": "Herdr agents that need you, terminal theme, YouTube Music in Chrome, window screenshots, and a services page.",
+	"Icon": "imgs/plugin",
+	"CategoryIcon": "imgs/plugin",
+	"Category": "Workstation Deck",
+	"CodePath": "bin/plugin.js",
+	"Nodejs": { "Version": "24" },
+	"SDKVersion": 2,
+	"Software": { "MinimumVersion": "7.1" },
+	"OS": [{ "Platform": "windows", "MinimumVersion": "10" }],
+	"Actions": [
+		{ "UUID": "dev.workstation.deck.needs-you", "Name": "Claude needs you", "Tooltip": "Lights up when a Claude pane in Herdr is waiting or finished; press to jump to it", "Icon": "imgs/needs-you", "Controllers": ["Keypad"], "States": [{ "Image": "imgs/needs-you" }] },
+		{ "UUID": "dev.workstation.deck.theme", "Name": "Light / dark", "Tooltip": "Flip the terminal and Claude between light and dark", "Icon": "imgs/theme", "Controllers": ["Keypad"], "States": [{ "Image": "imgs/theme" }] },
+		{ "UUID": "dev.workstation.deck.play-pause", "Name": "Play / pause", "Tooltip": "Play or pause YouTube Music in Chrome", "Icon": "imgs/play-pause", "Controllers": ["Keypad"], "States": [{ "Image": "imgs/play-pause" }] },
+		{ "UUID": "dev.workstation.deck.skip", "Name": "Next / previous", "Tooltip": "Tap for the next track in YouTube Music, hold for the previous one", "Icon": "imgs/skip", "Controllers": ["Keypad"], "States": [{ "Image": "imgs/skip" }] },
+		{ "UUID": "dev.workstation.deck.volume-up", "Name": "Volume up", "Tooltip": "Raise Chrome's volume (hold to keep going)", "Icon": "imgs/volume-up", "Controllers": ["Keypad"], "States": [{ "Image": "imgs/volume-up" }] },
+		{ "UUID": "dev.workstation.deck.volume-down", "Name": "Volume down", "Tooltip": "Lower Chrome's volume (hold to keep going)", "Icon": "imgs/volume-down", "Controllers": ["Keypad"], "States": [{ "Image": "imgs/volume-down" }] },
+		{ "UUID": "dev.workstation.deck.window-shot", "Name": "Window screenshot", "Tooltip": "Screenshot the window in front to the clipboard and Pictures\\Screenshots", "Icon": "imgs/window-shot", "Controllers": ["Keypad"], "States": [{ "Image": "imgs/window-shot" }] },
+		{ "UUID": "dev.workstation.deck.services", "Name": "Services", "Tooltip": "Open a page linking every service published with tailscale serve, with up/down status", "Icon": "imgs/services", "Controllers": ["Keypad"], "States": [{ "Image": "imgs/services" }] }
+	]
+}

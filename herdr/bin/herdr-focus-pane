@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""Focus the Nth pane (1-based, reading order) of the focused Herdr tab.
+
+Herdr's CLI only focuses by direction and its focus_agent binding only counts
+agent panes. The socket API's pane.focus takes any pane id, so use that.
+"""
+import json
+import os
+import socket
+import subprocess
+import sys
+
+
+def herdr(*args):
+    p = subprocess.run(["herdr", *args], capture_output=True, text=True)
+    if p.returncode != 0:
+        sys.exit(p.stderr.strip() or "herdr failed")
+    return json.loads(p.stdout)["result"]
+
+
+def main():
+    n = int(sys.argv[1])
+    panes = herdr("pane", "list")["panes"]
+    focused = next((p for p in panes if p.get("focused")), None)
+    if focused is None:
+        sys.exit("no focused pane")
+    layout = herdr("pane", "layout", "--pane", focused["pane_id"])["layout"]
+    ordered = sorted(layout["panes"], key=lambda p: (p["rect"]["y"], p["rect"]["x"]))
+    if n > len(ordered):
+        sys.exit(f"tab has only {len(ordered)} panes")
+    target = ordered[n - 1]["pane_id"]
+    if target == focused["pane_id"]:
+        return
+    sock_path = os.path.join(os.path.dirname(os.environ.get(
+        "HERDR_CONFIG_PATH", os.path.expanduser("~/.config/herdr/config.toml"))), "herdr.sock")
+    req = {"id": "focus-pane", "method": "pane.focus", "params": {"pane_id": target}}
+    with socket.socket(socket.AF_UNIX) as s:
+        s.settimeout(3)
+        s.connect(sock_path)
+        s.sendall((json.dumps(req) + "\n").encode())
+        resp = json.loads(s.makefile().readline())
+    if "error" in resp:
+        sys.exit(f"pane.focus failed: {resp['error']}")
+
+
+main()

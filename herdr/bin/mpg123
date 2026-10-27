@@ -1,0 +1,48 @@
+#!/bin/sh
+# Stand-in for mpg123 so Herdr can play notification sounds on WSL.
+# Herdr tries paplay, pw-play, ffplay, mpg123, then mpv; none are installed and
+# there is no sudo for apt, so this plays the file with the static ffmpeg in
+# ~/.local/bin through WSLg's PulseAudio bridge instead.
+# WSLg's PulseServer sometimes hangs (ffmpeg logs "Context failed" and never
+# exits) until `wsl --shutdown`, so if it fails a quick probe or the playback
+# itself, fall back to Windows audio through powershell.exe.
+# Herdr kills the player after 15s, which would cut off a long clip, so the
+# real work runs detached and this returns at once. Herdr passes a temp copy
+# (/tmp/herdr-sound-*.mp3) that it deletes when we return, so keep our own
+# copy, named by content so the Windows WAV conversion is cached too.
+# Herdr's exact arguments aren't documented, so treat the last one as the file.
+for arg; do file=$arg; done
+[ -f "${file:-}" ] || exit 1
+
+cache="$HOME/.cache/herdr-sound"
+if [ -z "${HERDR_SOUND_DETACHED:-}" ]; then
+  mkdir -p "$cache"
+  copy="$cache/$(cksum <"$file" | cut -d' ' -f1).mp3"
+  [ -f "$copy" ] || cp "$file" "$copy" || exit 1
+  HERDR_SOUND_DETACHED=1 setsid "$0" "$copy" </dev/null >/dev/null 2>&1 &
+  exit 0
+fi
+
+ffmpeg="$HOME/.local/bin/ffmpeg"
+export PULSE_SERVER="${PULSE_SERVER:-unix:/mnt/wslg/PulseServer}"
+
+play_windows() {
+  # SoundPlayer only takes WAV. Full powershell path because Herdr panes lack
+  # the Windows PATH.
+  wav="${file%.mp3}.wav"
+  if [ ! -f "$wav" ]; then
+    "$ffmpeg" -hide_banner -loglevel error -nostdin -y -i "$file" "$wav" || exit 1
+  fi
+  timeout 60 /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe \
+    -NoProfile -NonInteractive -Command \
+    "(New-Object Media.SoundPlayer '$(wslpath -w "$wav")').PlaySync()"
+}
+
+# A healthy PulseServer answers this in well under a second; a hung one never
+# does, and the hung ffmpeg ignores SIGTERM, hence KILL.
+if timeout -s KILL 3 "$ffmpeg" -hide_banner -loglevel quiet -nostdin \
+     -f lavfi -i anullsrc=r=44100:cl=stereo -t 0.05 -f pulse herdr-probe; then
+  timeout -s KILL 60 "$ffmpeg" -hide_banner -loglevel error -nostdin \
+    -i "$file" -f pulse herdr && exit 0
+fi
+play_windows

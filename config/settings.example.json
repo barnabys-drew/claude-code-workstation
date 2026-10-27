@@ -1,0 +1,20 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash /home/YOU/.claude/statusline-command.sh",
+    "refreshInterval": 15
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /home/YOU/.claude/scripts/ensure_chrome_debug.sh",
+            "timeout": 8
+          }
+        ]
+      }
+    ]
+  }
+}

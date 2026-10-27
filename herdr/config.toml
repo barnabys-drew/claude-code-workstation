@@ -1,0 +1,118 @@
+onboarding = false
+# Herdr configuration.
+# Only the settings below differ from `herdr --default-config`.
+
+# Agent sidebar rows for Claude panes.
+#
+# The default rows are [["state_icon", "workspace", "tab"], ["agent"]], so every
+# Claude pane reads "w1 t1 / claude" — four identical entries with nothing to
+# tell them apart. Claude Code writes its generated session name to the terminal
+# title (the same name the statusline prints at the top of the pane), so adding
+# the terminal_title_stripped row makes the sidebar entry match that name and
+# follow it as Claude renames the session. "_stripped" drops the leading status
+# glyph Claude prefixes, which Herdr already conveys with state_icon.
+[ui.sidebar.agents.rows_by_agent]
+claude = [["state_icon", "workspace", "tab"], ["terminal_title_stripped"], ["agent"]]
+
+# Star Wars "Dark Side" look: near-black vesper base with Sith-red accents.
+# Pairs with the "Dark Side Soft" color scheme on the Windows Terminal Herdr
+# profile; panel_bg = "reset" lets that scheme's background show through the
+# panes. Reds are toned down from the original neon #E01414/#FF3030 to match
+# the softer scheme and be easier on the eyes.
+[theme]
+name = "terminal"
+
+[theme.custom]
+# Fixed in both light and dark: term-theme flips the panes, never Herdr's own
+# chrome. A live reload-config only applies some tokens, so a per-mode sidebar
+# came out cream with light text until Herdr restarted. Pine with light text
+# reads the same next to light or dark panes, and needs no restart.
+sidebar_bg = "#15211A"
+active_row_bg = "#243229"
+selection_bg = "#34493A"
+panel_bg = "#1B2A20"
+surface0 = "#243229"
+surface1 = "#34493A"
+surface_dim = "#15211A"
+text = "#EDE6D6"
+subtext0 = "#C9D1C2"
+overlay1 = "#A9B5A3"
+overlay0 = "#8E9B88"
+accent = "#A6E22E"
+red = "#E07A5F"
+green = "#B5D86B"
+yellow = "#D4B483"
+
+[ui]
+accent = "#A6E22E"
+
+# One clip (bring your own mp3 into sounds/; none ships here) plays both when an agent
+# finishes and when it needs my attention (blocked on an approval or question).
+# ctrl+b m mutes this sound together with the toasts.
+[ui.sound]
+enabled = true
+done_path = "sounds/notify.mp3"
+request_path = "sounds/notify.mp3"
+
+# Show in-app toasts when background agents finish or need attention
+# (default is "off"), so the sound above has a popup to go with it.
+[ui.toast]
+delivery = "herdr"
+
+# alt+1..9 focuses the Nth agent row in the sidebar and drops straight into
+# typing (a direct shortcut, so it skips navigate mode). Only agent panes count.
+[keys]
+focus_agent = "alt+1..9"
+
+# ctrl+b then alt+1..9: same pane-by-position jump, prefix style.
+[[keys.command]]
+key = "prefix+alt+1"
+type = "shell"
+command = "/home/YOU/.local/bin/herdr-focus-pane 1"
+
+[[keys.command]]
+key = "prefix+alt+2"
+type = "shell"
+command = "/home/YOU/.local/bin/herdr-focus-pane 2"
+
+[[keys.command]]
+key = "prefix+alt+3"
+type = "shell"
+command = "/home/YOU/.local/bin/herdr-focus-pane 3"
+
+[[keys.command]]
+key = "prefix+alt+4"
+type = "shell"
+command = "/home/YOU/.local/bin/herdr-focus-pane 4"
+
+[[keys.command]]
+key = "prefix+alt+5"
+type = "shell"
+command = "/home/YOU/.local/bin/herdr-focus-pane 5"
+
+[[keys.command]]
+key = "prefix+alt+6"
+type = "shell"
+command = "/home/YOU/.local/bin/herdr-focus-pane 6"
+
+[[keys.command]]
+key = "prefix+alt+7"
+type = "shell"
+command = "/home/YOU/.local/bin/herdr-focus-pane 7"
+
+[[keys.command]]
+key = "prefix+alt+8"
+type = "shell"
+command = "/home/YOU/.local/bin/herdr-focus-pane 8"
+
+[[keys.command]]
+key = "prefix+alt+9"
+type = "shell"
+command = "/home/YOU/.local/bin/herdr-focus-pane 9"
+
+
+# ctrl+b then m mutes/unmutes background toasts and sounds together.
+[[keys.command]]
+key = "prefix+m"
+type = "shell"
+command = "/home/YOU/.local/bin/herdr-toggle-toasts"
