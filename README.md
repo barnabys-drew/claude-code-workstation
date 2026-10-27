@@ -7,7 +7,8 @@
 The setup I use to run several [Claude Code](https://claude.com/claude-code)
 agents side by side on Windows + WSL2: a statusline that always says **what is
 paying for this session**, a Herdr + WezTerm terminal grid, one-key light/dark
-theming, and a Stream Deck that lights up when an agent needs me.
+theming, an orchestrator that keeps the panes moving through a shared GitHub
+Project, and a Stream Deck that lights up when an agent needs me.
 
 ![The statusline in two states: on Fable inside the plan quota, and with the quota spent and plan credits paying](assets/screenshot.png)
 
@@ -22,6 +23,7 @@ theming, and a Stream Deck that lights up when an agent needs me.
 | 🧩 | [**Herdr**](docs/herdr.md) | Multiplexer config for a grid of Claude panes: named sidebar rows, a sound and toast when an agent finishes, one-key mute for an hour, jump-to-pane-N. |
 | 🖥️ | [**WezTerm + theme**](docs/terminal-and-theme.md) | Pine-dark and bone-paper-light palettes, Windows-style clipboard, and `term-theme` to flip WezTerm, Windows Terminal and Claude Code together. |
 | 🪄 | [**Skills**](docs/skills.md) | `/regrid` re-tiles panes into a tidy grid; `/dark` and `/light` switch the theme. |
+| 🤖 | [**Orchestrator**](docs/orchestrator.md) | Works a GitHub Project of tasks across your repos: starts a Claude pane per item, keeps it moving, and only brings you in for decisions, which you answer on the issue. |
 | 🎛️ | [**Stream Deck**](streamdeck/README.md) | A "Claude needs you" key that flashes for blocked agents and jumps to them, plus theme, media, screenshot and services keys. |
 
 Each piece stands alone. Take only the statusline if that's all you want.
@@ -54,6 +56,7 @@ plan-credit rows need the optional scraper; see
 |---|---|
 | Statusline core | bash, python3, git |
 | Usage scraper | Chrome on the Windows side of WSL2, cron. Stdlib Python only. |
+| Orchestrator | Herdr, `gh` with the `project` scope |
 | Herdr, theme, skills | WSL2 Ubuntu, [Herdr](https://github.com/herdrdev/herdr), WezTerm on Windows |
 | Stream Deck | Windows, Stream Deck 7.1+, Node 24 |
 
@@ -67,7 +70,8 @@ statusline/   statusline-command.sh, scraper, Chrome helpers   -> ~/.claude/
 herdr/        config.toml, bin/ (mute, focus-pane, sound)       -> ~/.config/herdr/, ~/.local/bin/
 wezterm/      wezterm.lua                                       -> %USERPROFILE%\.wezterm.lua
 theme/        term-theme, paper.json                            -> ~/.claude/scripts/, ~/.claude/themes/
-skills/       regrid, dark, light                               -> ~/.claude/skills/
+skills/       regrid, dark, light, orchestrate                  -> ~/.claude/skills/
+orchestrator/ board, dispatcher, watcher, setup.sh              -> linked as ~/.claude/workboard
 streamdeck/   Stream Deck plugin (TypeScript)                   -> npm run install-plugin
 config/       example settings.json hooks and crontab
 docs/         per-piece docs and the screenshot renderer
