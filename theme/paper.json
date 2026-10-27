@@ -1,0 +1,11 @@
+{
+  "name": "Paper",
+  "base": "light-ansi",
+  "overrides": {
+    "userMessageBackground": "#DCD6C5",
+    "userMessageBackgroundHover": "#DCD6C5",
+    "composerSidebarBackground": "#DCD6C5",
+    "bashMessageBackgroundColor": "#DCD6C5",
+    "memoryBackgroundColor": "#DCD6C5"
+  }
+}

@@ -5,14 +5,13 @@
 # Quota rows come straight from the hook payload (rate_limits.five_hour and
 # .seven_day), which is live, exact, and carries reset times as unix epochs.
 #
-# This used to be scraped from the claude.ai settings page, because the page
-# also carried a per-model Fable cap the CLI never exposed. That cap no longer
-# exists — the page now shows only "Current session" and "All models", the same
-# two buckets the payload already provides — so the scrape was pure overhead
-# for those rows and is gone.
+# This used to be scraped from the claude.ai settings page. The payload now
+# carries both buckets live, so the scrape for those rows is gone.
 #
-# scripts/scrape_claude_usage.py is still the only source for the two billing
-# rows (usage credits, Console API credits), which the payload does not carry.
+# scripts/scrape_claude_usage.py is still the only source for the rows the
+# payload does not carry: the per-model Fable cap (retired Sep 2026, back by
+# late Oct as "up to 50% of your weekly limit") and plan usage credits. The Console
+# API-credits row was removed with its scrape on 2026-09-16.
 # Those move slowly, so a stale reading there is far less misleading than a
 # stale session quota was.
 #
@@ -22,7 +21,7 @@
 #
 # The leading marker on each row answers "what is paying for this session?".
 # ▸ marks the one billing pool the next request draws from, ○ a billing pool
-# that is not currently paying, · a row that is not a billing pool at all.
+# that is not currently paying, ∙ a row that is not a billing pool at all.
 # Staleness is flagged inline per row and in the warning lines instead — it
 # used to own this column, which made three unrelated rows look like a ladder.
 #
@@ -30,7 +29,7 @@
 # "|", which a session name or branch could contain.
 IFS=$'\x1f' read -r session_name model_label cwd repo_owner repo_name \
                     git_worktree pr_segment budget_lines_b64 < <(python3 -c '
-import sys, json, os, time, base64, datetime
+import sys, json, os, time, base64, datetime, re
 
 try:
     d = json.load(sys.stdin)
@@ -152,8 +151,11 @@ def row_age(entry):
 # Billing markers. Colour escalates with how the money is spent: green is
 # included in the subscription, yellow is overflow spend on top of it, red is
 # metered API spend. ○ is a billing pool that exists but is not paying now;
-# · is a row that is not a billing pool (context, session-cost estimate).
-MARK_INFO = f"{GRAY}·{RESET}"
+# ∙ is a row that is not a billing pool (context, session-cost estimate).
+# It is U+2219, not the middle dot U+00B7: Herdr reads a line that starts with
+# U+00B7 and ends in "…" (Claude Code truncating a wide row) as the Claude
+# spinner, and marks an idle pane as working forever.
+MARK_INFO = f"{GRAY}∙{RESET}"
 MARK_IDLE = f"{GRAY}○{RESET}"
 MARK_PAY = {"quota":   f"{GREEN}{BOLD}▸{RESET}",
             "credits": f"{YELLOW}{BOLD}▸{RESET}",
@@ -273,16 +275,46 @@ elif _pcts:
 else:
     paying = None  # nothing billed yet — say nothing rather than guess
 
+# Plan-limit history for a token-usage dashboard.
+# The payload only says where the limits are right now, so a snapshot is
+# appended whenever a value moves, for a dashboard to chart. Deduped against the
+# last snapshot so a statusline redraw costs one small read. Never allowed to
+# break the statusline.
+def log_limits():
+    fh, sd = rate_limits.get("five_hour") or {}, rate_limits.get("seven_day") or {}
+    if not (fh or sd):
+        return
+    snap = {"h5": fh.get("used_percentage"), "h5_reset": fh.get("resets_at"),
+            "d7": sd.get("used_percentage"), "d7_reset": sd.get("resets_at")}
+    base = os.path.expanduser(os.environ.get("CLAUDE_LIMITS_DIR") or "~/.local/share/claude-limits")
+    last_path = os.path.join(base, "limits.last")
+    key = json.dumps(snap, sort_keys=True)
+    try:
+        with open(last_path) as f:
+            if f.read() == key:
+                return
+    except OSError:
+        pass
+    os.makedirs(base, exist_ok=True)
+    with open(os.path.join(base, "limits.jsonl"), "a") as f:
+        f.write(json.dumps({"t": round(time.time()), **snap,
+                            "model": (d.get("model") or {}).get("id")}) + "\n")
+    with open(last_path, "w") as f:
+        f.write(key)
+
+try:
+    log_limits()
+except Exception:
+    pass
+
 # Which rows to draw, in order. Override with STATUSLINE_ROWS, e.g.
 #   STATUSLINE_ROWS=context,session,weekly       # no billing, no scraper
 #   STATUSLINE_ROWS=context,cost
 #
 # Any rate_limits bucket can be added as "rl:<key>[=Label]" without touching
-# this file. That is the hook for a per-model cap coming back: Anthropic
-# retired the Fable-specific quota, but if a bucket like rate_limits.opus
-# appears, STATUSLINE_ROWS=session,weekly,rl:opus=Opus renders it. Only the
-# payload key needs to exist — there is no scraping involved.
-DEFAULT_ROWS = "context,session,weekly,cost,plan_credits,api_credits"
+# this file. If the payload ever grows a Fable bucket, swap "fable" for
+# rl:<key>=Fable and drop the scrape for it.
+DEFAULT_ROWS = "context,session,weekly,fable,cost,plan_credits"
 
 def build_context():
     pct = ctx.get("used_percentage")
@@ -296,7 +328,9 @@ def build_context():
     return [bar_row(MARK_INFO, "Context", float(pct), detail)]
 
 def build_session():
-    label = f"Session (Claude {plan})" if plan else "Session"
+    # "Max (5x)" -> "Max 5x": "Session (Claude Max (5x))" overflows LBL.
+    short = (plan or "").replace("(", "").replace(")", "")
+    label = f"Session ({short})" if short else "Session"
     suffix = PAY_NOTE["quota"] if paying == "quota" else ""
     return [render_live(label, rate_limits.get("five_hour"), suffix)]
 
@@ -306,6 +340,22 @@ def build_weekly():
         return []  # annotation must not outlive the row it annotates
     sub = f"  {GRAY}Claude {plan} subscription (active){RESET}" if plan else None
     return [row, sub]
+
+def build_fable():
+    """The Fable sub-cap of the weekly quota, scraped (the payload has no
+    bucket for it). Marked as paying only while this session runs on Fable —
+    other models draw on All models alone."""
+    entry = usage.get("fable")
+    if not entry:
+        return []
+    on_fable = "fable" in str((d.get("model") or {}).get("id") or "").lower()
+    marker = MARK_PAY["quota"] if (paying == "quota" and on_fable) else MARK_IDLE
+    detail = "resets " + (entry.get("resets") or "-")
+    m = re.search(r"(\d+%)", entry.get("cap") or "")
+    if m:
+        detail += f"  · cap {m.group(1)} of weekly"
+    return [bar_row(marker, "Fable", float(entry.get("used_pct") or 0), detail,
+                    row_mark(entry))]
 
 def build_cost():
     """Cost, burn rate and diff churn for this session.
@@ -336,24 +386,17 @@ def build_plan_credits():
                            PAY_NOTE["credits"] if on else "", on),
             f"  {GRAY}↑ overflow add-on — takes over when session/weekly hits 100%{RESET}"]
 
-def build_api_credits():
-    on = paying == "api"
-    return [render_credits("API credits", usage.get("console_credits"),
-                           MARK_PAY["api"] if on else MARK_IDLE,
-                           PAY_NOTE["api"] if on else "", on),
-            f"  {GRAY}↑ Console account — pays instead of the plan when authed by API key{RESET}"]
-
 ROW_BUILDERS = {
     "context": build_context,
     "session": build_session,
     "weekly": build_weekly,
+    "fable": build_fable,
     "cost": build_cost,
     "plan_credits": build_plan_credits,
-    "api_credits": build_api_credits,
 }
 
 wanted = [r.strip() for r in os.environ.get("STATUSLINE_ROWS", DEFAULT_ROWS).split(",") if r.strip()]
-uses_cache = any(r in ("plan_credits", "api_credits") for r in wanted)
+uses_cache = "plan_credits" in wanted or "fable" in wanted
 
 lines = []
 for row_id in wanted:
@@ -373,6 +416,7 @@ lines = [l for l in lines if l]  # drop absent rows and empty annotations
 # above it looked live when they were two days old.
 _REASONS = {
     "no-cdp": "Chrome not on debug port :9222",
+    "cdp-hung": "Chrome port up but not answering (restart Chrome)",
     "no-data": "page scrape returned nothing (session expired?)",
     "error":   "scraper crashed",
 }
@@ -454,6 +498,30 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 RESET='\033[0m'
 BOLD='\033[1m'
+
+# Herdr mute (prefix+m, ~/.local/bin/herdr-toggle-toasts). The config says
+# whether toasts and sounds are off; the deadline file says for how long. An
+# overdue deadline means the unmute timer died (e.g. WSL restarted), so kick
+# the unmute from here instead of showing a stale countdown.
+herdr_config="${HERDR_CONFIG_PATH:-$HOME/.config/herdr/config.toml}"
+if grep -q '^delivery = "off"' "$herdr_config" 2>/dev/null; then
+  mute_left=""
+  if until=$(cat "$HOME/.cache/herdr-mute-until" 2>/dev/null); then
+    mute_left=$(( ${until%.*} - $(date +%s) ))
+  fi
+  if [ -n "$mute_left" ] && [ "$mute_left" -le 0 ]; then
+    setsid "$HOME/.local/bin/herdr-toggle-toasts" --unmute-if-expired \
+      </dev/null >/dev/null 2>&1 &
+  elif [ -n "$mute_left" ]; then
+    printf "${YELLOW}${BOLD}  🔇 Herdr muted${RESET}${YELLOW} · %dm left${RESET}\n" \
+      $(( (mute_left + 59) / 60 ))
+  else
+    printf "${YELLOW}${BOLD}  🔇 Herdr muted${RESET}${YELLOW} · until ctrl+b m${RESET}\n"
+  fi
+else
+  # Always shown, so the absence of the muted line is never ambiguous.
+  printf "${GRAY}  🔊 Herdr sound on · ctrl+b m mutes 1h${RESET}\n"
+fi
 
 # Session title
 if [ -n "$session_name" ]; then

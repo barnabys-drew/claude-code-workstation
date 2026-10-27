@@ -1,248 +1,206 @@
-# claude-code-statusline
+# claude-code-workstation
 
-A [Claude Code](https://claude.com/claude-code) `statusLine` that answers one
-question first — **which pool is paying for this session?** — and then fills in
-the detail: context window usage, session and weekly rate limits, session cost
-and burn rate, git state and open PR, plus (via an optional Chrome-based
-scraper) the two credit balances Anthropic exposes only on its web dashboards.
+My [Claude Code](https://claude.com/claude-code) workstation, published whole:
+a statusline that says which pool is paying for each session, the
+Herdr + WezTerm setup that runs a grid of Claude panes on
+WSL2, one-key light/dark theming, and a Stream Deck plugin that tells me when an
+agent needs me.
 
-Every row is drawn on one alignment grid, and each carries an honest freshness
-signal rather than presenting cached numbers as live.
+Built on and for **WSL2 + Windows** (WezTerm and Chrome on the Windows side,
+Claude Code and Herdr in Ubuntu). The statusline core is portable; most of the
+rest assumes that split.
 
-![claude-code-statusline screenshot](assets/screenshot.png)
+![statusline screenshot](assets/screenshot.png)
 
-*The same session before and after its 5-hour limit runs out — the `▸` moves
-from the quota row to the credits row. Illustrative numbers, not real billing
-data.*
+*Illustrative numbers, not real billing data. Taken before the Fable row
+returned and the API-credits row was retired.*
 
-## Which pool is paying
+| Folder | What | Install to |
+|---|---|---|
+| [`statusline/`](#statusline) | `statusLine` command + usage scraper and its Chrome helpers | `~/.claude/statusline-command.sh`, `~/.claude/scripts/` |
+| [`herdr/`](#herdr) | Herdr config, mute toggle, focus-pane-N, WSL sound shim | `~/.config/herdr/config.toml`, `~/.local/bin/` |
+| [`wezterm/`](#wezterm) | WezTerm config with both palettes | `%USERPROFILE%\.wezterm.lua` |
+| [`theme/`](#lightdark) | `term-theme` switcher + Claude Code "paper" theme | `~/.claude/scripts/term-theme`, `~/.claude/themes/` |
+| [`skills/`](#skills) | `/regrid`, `/dark`, `/light` Claude Code skills | `~/.claude/skills/` |
+| [`streamdeck/`](#stream-deck) | Stream Deck plugin (Windows) | `npm run install-plugin` |
+| [`config/`](config/) | Example `settings.json` hooks and crontab | merge into your own |
 
-Working with Claude Code bills to one of three pools, and the leading marker on
-each row says which one is live right now:
+Paths in the examples use `/home/YOU`; substitute your own.
+
+---
+
+## Statusline
+
+Answers one question first — **which pool is paying for this session?** — then
+fills in context window, session and weekly limits, the Fable sub-cap, session
+cost and burn rate, git state, open PR, and the Herdr mute state.
+
+### Which pool is paying
 
 | Marker | Meaning |
 |---|---|
-| <code>▸</code> green | **Plan quota** — the rolling 5-hour and 7-day subscription limits. Free at the point of use. |
-| <code>▸</code> yellow | **Plan credits** — the usage-credit overflow add-on, which takes over the moment either rolling limit hits 100% so the session keeps running. Real money. |
-| <code>▸</code> red | **API credits** — a Console (`platform.claude.com`) account billed per token, used when Claude Code is authenticated with an API key rather than a subscription. |
-| <code>○</code> | A billing pool that exists but is not paying for this session. |
-| <code>·</code> | Not a billing pool at all — context window, session cost estimate. |
+| <code>▸</code> green | **Plan quota** — the rolling 5-hour and 7-day limits. Free at the point of use. |
+| <code>▸</code> yellow | **Plan credits** — the usage-credit overflow, which takes over when either limit hits 100%. Real money. |
+| <code>▸</code> red | **API credits** — a Console account billed per token (API-key sessions). |
+| <code>○</code> | A pool that exists but is not paying for this session. |
+| <code>∙</code> | Not a billing pool — context window, session cost estimate. |
 
-Quota and plan credits are a sequence: spend flows from the first into the
-second at 100%. API credits are an **alternative** to both — an API-key session
-never touches the subscription, and a subscription session never touches the
-Console balance. That is why only ever one `▸` is lit.
+Quota and plan credits are a sequence; API credits are an alternative to both,
+so only one `▸` is ever lit. The Fable row is lit only while the session runs on
+Fable, since other models draw on "All models" alone.
 
-The paying pool is worked out from the payload rather than configured:
-`ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` in the environment is decisive,
-otherwise the presence of `rate_limits` marks a subscription session and its
-percentages pick quota vs. credits. Before the first API response there is
-nothing to go on, so no row is marked rather than guessing.
+The paying pool is inferred: `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` in the
+environment is decisive, otherwise `rate_limits` in the payload marks a
+subscription and its percentages pick quota vs. credits. Before the first API
+response nothing is marked rather than guessed. `∙` is U+2219, not the middle
+dot: Herdr reads a line starting with U+00B7 and ending in `…` as the Claude
+spinner and would mark an idle pane as working forever.
 
-> Earlier versions used this column for cache freshness — green for a fresh
-> scrape, gray for stale. Three rows carrying identical green dots for an
-> unrelated reason read as a three-tier billing ladder, which is the exact
-> thing they were not. Freshness now lives inline (`(row from 13d ago)`) and in
-> the warning line beneath the block.
-
-## Why this exists
-
-The quota rows come straight from the `statusLine` hook payload, which reports
-`rate_limits.five_hour` and `rate_limits.seven_day` with reset times as unix
-epochs. That is live and exact, and needs no browser.
-
-What the payload does **not** carry is money: neither the plan's usage-credit
-overflow nor the separate Console/API credit balance appears anywhere in it.
-Those exist only on `claude.ai` and `platform.claude.com`. So the repo has two
-independent layers:
-
-1. **Core statusline** (`statusline-command.sh`) — context window, session and
-   weekly quota, model, git branch/repo. No extra setup, no browser.
-2. **Billing scraper** (`scripts/scrape_claude_usage.py`, optional) — reads the
-   two credit figures through a real, non-headless Chrome window over the
-   DevTools protocol, on a cron. Headless is not an option: Cloudflare's bot
-   challenge blocks it even with valid session cookies.
-
-Layer 2 is inherently more fragile — it scrapes a UI that can change and depends
-on a browser you keep open — so it is opt-in and fails visibly rather than
-quietly. Credit figures also move on a monthly cadence, so a stale reading there
-is far less misleading than a stale session quota would be.
-
-> **Historical note.** This tool originally scraped the quota rows too, because
-> the usage page carried a per-model cap (Fable's) that the CLI never exposed.
-> That cap has since been retired — the page now shows only "Current session"
-> and "All models", the same two buckets the payload already provides — so the
-> scrape was removed. If a per-model bucket ever returns to the payload, add it
-> with `STATUSLINE_ROWS` (below); no scraping required.
-
-## Install: core statusline
-
-1. Copy `statusline-command.sh` somewhere permanent, e.g. `~/.claude/statusline-command.sh`.
-2. Add to `~/.claude/settings.json`:
-   ```json
-   {
-     "statusLine": {
-       "type": "command",
-       "command": "bash /home/YOU/.claude/statusline-command.sh"
-     }
-   }
-   ```
-3. Restart Claude Code (or run `/config` and toggle something to force a reload).
-
-Context, Session, All models, This session, and the whole footer work
-immediately. The two credit rows read "no data" until you set up the scraper, or
-you can switch them off entirely — see below.
-
-The `cost` row is deliberately kept visually apart from the credit rows: it is
-Claude Code's own client-side estimate and resets on `/clear`, whereas the
-credit rows are billed figures read off Anthropic's dashboards. Same grid,
-no progress bar, and an annotation saying which it is.
-
-`rate_limits` is only present for Claude.ai subscribers (Pro/Max) and only after
-the first API response in a session, so the quota rows are briefly absent at
-startup. They are omitted rather than shown as zero.
-
-## Choosing rows
-
-Set `STATUSLINE_ROWS` to a comma-separated, ordered list. Default:
-
-```
-context,session,weekly,cost,plan_credits,api_credits
-```
+### Where each row comes from
 
 | Row id | Shows | Source |
 |---|---|---|
-| `context` | Context window used, with token breakdown | payload |
-| `session` | 5-hour rolling limit | payload |
+| `context` | Context window used, token breakdown | payload |
+| `session` | 5-hour limit | payload |
 | `weekly` | 7-day limit ("All models") | payload |
+| `fable` | Fable's sub-cap of the weekly limit | scraper |
 | `cost` | Session cost, burn rate, lines changed, duration | payload |
-| `plan_credits` | Plan usage-credit overflow | scraper |
-| `api_credits` | Console/API credit balance | scraper |
+| `plan_credits` | Usage-credit overflow | scraper |
 | `rl:<key>[=Label]` | Any other `rate_limits` bucket | payload |
 
-The footer line is always drawn: model, how it is configured (`effort`,
-`thinking`, `fast`), repo, branch with a `●` when the tree is dirty and `↑`/`↓`
-against upstream, and the open PR coloured by review state. Each part is
-omitted when the payload does not carry it.
-
-Drop both credit rows and the scraper becomes unnecessary — no cron, no Chrome
-debug port, no staleness warnings:
+Default: `context,session,weekly,fable,cost,plan_credits`. Override with
+`STATUSLINE_ROWS`; drop `fable` and `plan_credits` and the scraper is
+unnecessary:
 
 ```json
 { "statusLine": { "type": "command",
-  "command": "STATUSLINE_ROWS=session,weekly bash /home/YOU/.claude/statusline-command.sh" } }
+  "command": "STATUSLINE_ROWS=context,session,weekly,cost bash /home/YOU/.claude/statusline-command.sh" } }
 ```
 
-The `rl:` form renders any bucket the payload happens to expose, which is the
-escape hatch if per-model caps come back:
+The footer always shows the model and its configuration (`effort`, `thinking`,
+`fast`), repo, branch with `●` when dirty and `↑`/`↓` against upstream, and the
+open PR coloured by review state. Above the rows sits a Herdr sound line
+(`🔊 sound on` / `🔇 muted · 42m left`, see [Herdr](#herdr)).
 
-```
-STATUSLINE_ROWS=session,weekly,rl:opus=Opus
-```
+Each time the 5-hour or weekly figure moves, a snapshot is appended to
+`$CLAUDE_LIMITS_DIR/limits.jsonl` (default `~/.local/share/claude-limits`) for
+charting. It never blocks or breaks the render.
 
-`CLAUDE_USAGE_CACHE` overrides the cache path, which is handy for testing
-against a fixture.
+### Why a scraper
 
-## Install: billing scraper (optional)
+The payload carries the 5-hour and weekly buckets live, with epoch reset times.
+It does **not** carry money, and it has no bucket for the per-model Fable cap
+("up to 50% of your weekly limit") — that cap was retired in September 2026 and
+came back in October, and the CLI still only knows legacy keys. Both exist only
+on `claude.ai/settings/usage`, so `scripts/scrape_claude_usage.py` reads them
+on a cron.
 
-Requires Playwright (`pip install playwright && playwright install chromium` —
-the package is needed even though this never launches its own browser, only
-attaches to yours over CDP) and a Chrome window you keep logged in.
+It is stdlib Python (no Playwright). It attaches over the DevTools protocol to
+a **dedicated, windowless Chrome** with its own profile
+(`%LOCALAPPDATA%\ClaudeUsageChrome`), opens a background tab of its own, reads
+the page text and closes the tab. Headless is not an option: Cloudflare's
+challenge blocks it even with a valid session.
 
-**Built and tested on WSL2 + Windows Chrome.** The debug-port launch commands
-are WSL-specific; on native Linux/macOS substitute your own way of starting
-Chrome with `--remote-debugging-port=9222` on a logged-in profile. Everything
-downstream of "Chrome is up on :9222" is plain Playwright and portable.
+Why a dedicated instance: Chrome 136+ refuses `--remote-debugging-port` on the
+default `User Data` directory, even when the path is passed explicitly. A
+second Chrome with its own `--user-data-dir` runs fine beside your normal one,
+so nothing ever has to close your browser.
 
-1. **Launch Chrome with the debug port and log in.**
-   ```bash
-   # WSL example — adjust exe/profile paths for your machine
-   powershell.exe -NoProfile -Command \
-     "Start-Process -FilePath 'C:\Program Files\Google\Chrome\Application\chrome.exe' \
-      -ArgumentList '--remote-debugging-port=9222','--profile-directory=Default'"
-   ```
-   Log into **both** `claude.ai` and `platform.claude.com` — separate logins even
-   on the same account.
+### Install
 
-   Chrome only honours that flag on a **cold** start. Launching it while an
-   instance already holds the profile silently forwards to the running process
-   and drops the flag, so Chrome must be fully closed first.
+1. Copy `statusline/statusline-command.sh` to `~/.claude/` and
+   `statusline/scripts/*` to `~/.claude/scripts/`.
+2. Merge [`config/settings.example.json`](config/settings.example.json) into
+   `~/.claude/settings.json`. The `SessionStart` hook (`ensure_chrome_debug.sh`)
+   starts the scraper Chrome if :9222 is down — about 3 seconds, never closes
+   anything.
+3. Run `bash ~/.claude/scripts/fix_usage_scrape.sh` once. It starts the
+   instance; log into claude.ai in it (open it with
+   `--user-data-dir=%LOCALAPPDATA%\ClaudeUsageChrome`).
+4. Add the line from [`config/crontab.example`](config/crontab.example).
 
-2. **Test the scraper once:**
-   ```bash
-   python3 scripts/scrape_claude_usage.py
-   cat ~/.claude/claude-usage-cache.json
-   tail ~/.claude/scripts/scrape_claude_usage.log
-   ```
-   Expect `plan`, `credits`, `console_credits`, per-row `_fetched_at` stamps, and
-   a `last_run` block. The log records one line per run (`OK 2 rows`, `FAIL
-   no-cdp …`) — the scraper never writes to stdout, so the log is how you find
-   out it stopped working.
+The scraper never writes to stdout: `~/.claude/scripts/scrape_claude_usage.log`
+has one line per run (`OK 2 rows`, `FAIL no-cdp …`, `cdp-hung`). When the
+statusline goes stale, `fix_usage_scrape.sh` is the whole recovery.
 
-3. **Cron it** (point at whichever python has Playwright):
-   ```
-   */5 * * * * /path/to/python3 /path/to/scripts/scrape_claude_usage.py >> ~/.claude/scrape_claude_usage.log 2>&1
-   ```
-   Hourly is plenty — these are monthly figures.
-
-4. **Optional: `SessionStart` hook.** `scripts/ensure_chrome_debug.sh` launches
-   Chrome with the debug flag if Chrome is not running at all. If Chrome **is**
-   running without the flag — the common case when it is your daily browser — it
-   deliberately does not kill it and prints a one-line reminder instead.
-   ```json
-   {
-     "hooks": {
-       "SessionStart": [
-         { "hooks": [{ "type": "command", "command": "bash /path/to/scripts/ensure_chrome_debug.sh", "timeout": 8 }] }
-       ]
-     }
-   }
-   ```
-
-5. **When it breaks:** `scripts/fix_usage_scrape.sh` does the whole recovery —
-   closes Chrome gracefully so tabs restore, relaunches it with the debug port,
-   waits for the port, re-scrapes, and verifies the cache actually took new data.
-   It prompts before closing anything (`--yes` to skip), and finds a
-   Playwright-capable interpreter automatically (override with
-   `STATUSLINE_PYTHON`).
-
-   This is a command you run, not a cron job, precisely because recovery means
-   closing your browser. Nothing here does that on a timer.
-
-## How staleness is handled
+### Staleness
 
 Cached rows carry their own `_fetched_at`. A partial scrape merges over the
-previous cache, so without per-row stamps a regex that quietly stops matching
-would keep serving its last value forever under a fresh top-level timestamp —
-which is exactly how a retired row went unnoticed for weeks. Rows older than the
-scrape as a whole are marked individually, and the freshness line names the
-failure and the fix:
+cache, so without per-row stamps a regex that stops matching would serve its
+last value forever under a fresh top-level timestamp — which is how the first
+retired Fable row went unnoticed for weeks. Rows older than the scrape are
+marked `(row from 13d ago)`, and a warning line names the failure and the fix.
 
-```
-⚠ usage data 2d ago — Chrome not on debug port :9222  fix: bash ~/.claude/scripts/fix_usage_scrape.sh
-```
+Caveats: Anthropic's markup changes, and the regexes follow. The scraper fails
+closed (keeps the last good cache) and says so. The "credit" figure is a
+prepaid balance, not limit-minus-spent; a negative one is flagged `unpaid` past
+$1, red on the pool that is paying.
 
-That line only appears when a cached row is actually on screen.
+---
 
-### Caveats
+## Herdr
 
-- Anthropic's markup can change and the regexes may need updating. The scraper
-  fails closed — it leaves the last good cache alone rather than writing garbage
-  — but it now says so in the log and on the statusline.
-- Headless scraping does not work. Verified directly: Cloudflare's challenge
-  blocks it even with a valid cookie-restored session.
-- The scraper never launches or force-quits Chrome. Only `fix_usage_scrape.sh`
-  closes it, only when you confirm, and only via a graceful close.
-- `used_percentage` and the dollar figures are scraped independently, so they can
-  disagree slightly. The "credit" figure is a prepaid balance, **not**
-  limit-minus-spent. A negative one is flagged `unpaid` only past $1 — below
-  that it is settlement lag rather than arrears, and the balance is printed
-  regardless. The flag is red on the pool that is currently paying, where it
-  stops the session, and plain yellow anywhere else.
-- The paying-pool marker is inferred, not reported: the payload has no "you are
-  billing to X" field. An API key supplied outside the environment (e.g. stored
-  credentials) is detected only once the session has non-zero cost and still no
-  `rate_limits`.
+[`herdr/config.toml`](herdr/config.toml) — only the settings that differ from
+`herdr --default-config`:
+
+- **Sidebar rows** show each Claude pane's session name (`terminal_title_stripped`)
+  instead of four identical `w1 t1 / claude` entries.
+- **Pine theme** for Herdr's own chrome, fixed in both light and dark, because a
+  live reload only applies some tokens.
+- **Sound + toasts** when an agent finishes or needs attention. Bring your own
+  mp3 as `~/.config/herdr/sounds/notify.mp3`; none ships here.
+- **`alt+1…9`** focuses the Nth agent row, **`prefix+alt+1…9`** the Nth pane
+  of any kind, **`prefix+m`** mutes for an hour.
+
+`herdr/bin/` (to `~/.local/bin/`):
+
+| Script | Does |
+|---|---|
+| `herdr-toggle-toasts` | Flips toasts and sound together, records a one-hour deadline in `~/.cache/herdr-mute-until`, and starts a detached timer to unmute. The statusline shows the countdown and fires the unmute itself if the timer died (WSL restart). |
+| `herdr-focus-pane N` | Focuses the Nth pane in reading order via the socket API (the CLI only moves by direction). |
+| `mpg123` | Stand-in player so Herdr can play sounds on WSL with no audio packages: ffmpeg through WSLg's PulseAudio, falling back to Windows audio when WSLg's PulseServer hangs. Detaches, so Herdr's 15 s kill doesn't cut long clips. Needs a static `ffmpeg` in `~/.local/bin`. |
+
+Herdr is started by systemd, so its panes (and every Claude Code hook under
+them) get a PATH with no `/mnt/c` entries. Every script here calls Windows
+binaries by absolute path for that reason.
+
+## WezTerm
+
+[`wezterm/wezterm.lua`](wezterm/wezterm.lua) opens straight into WSL and holds
+both palettes (pine dark, bone-paper light); `term-theme` flips its
+`local mode = …` line. Clipboard habits are Windows-like: Ctrl+C copies when
+text is selected and interrupts otherwise, mouse release never overwrites the
+clipboard (it was clobbering snipped screenshots), Ctrl+Shift+V sends a raw ^V
+so Claude Code can paste an image, and Ctrl+click opens links through Herdr's
+mouse capture.
+
+## Light/dark
+
+`theme/term-theme light|dark|status [--restart]` flips WezTerm, the Windows
+Terminal scheme and Claude Code's theme together (`dark-ansi` in dark,
+`custom:paper` in light — `paper.json` is light-ansi with backgrounds set to the
+bone paper). `--restart` restarts Herdr four seconds later, since its server
+caches the host background at startup. It finds your Windows home itself; set
+`WIN_HOME` or `WEZTERM_CONFIG` to override.
+
+## Skills
+
+Copy each folder to `~/.claude/skills/`.
+
+- **`/regrid`** — re-tiles the current Herdr tab into a near-square grid (4 → 2×2,
+  6 → 3×2, never 3+1), keeping every process. `--dry-run` previews.
+  Tests: `python3 -m unittest discover -s skills/regrid`.
+- **`/dark`, `/light`** — run `term-theme` with `--restart`.
+
+## Stream Deck
+
+[`streamdeck/`](streamdeck/) is a Windows Stream Deck plugin ("Workstation
+Deck"): a **Claude needs you** key (blocked agents flash red, done ones amber;
+press to jump to the next, WezTerm comes to the front), the **light/dark**
+switch, YouTube Music play/pause/skip and Chrome-only volume, a window
+screenshot key, and a page of every `tailscale serve` service with up/down
+status. See its [README](streamdeck/README.md); set `HERDR_BRIDGE` in
+`src/config.ts` to your checkout first.
 
 ## License
 

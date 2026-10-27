@@ -1,0 +1,3 @@
+# Usage scrape for the statusline's Fable and plan-credit rows. Stdlib only, so
+# any python3 works.
+*/5 * * * * python3 /home/YOU/.claude/scripts/scrape_claude_usage.py >> /home/YOU/.claude/scripts/scrape_claude_usage.log 2>&1

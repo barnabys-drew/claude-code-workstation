@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Mute/unmute Herdr's background notifications in one press.
+
+Flips [ui.toast] delivery ("herdr" <-> "off") and [ui.sound] enabled
+(true <-> false) together, then reloads the config.
+
+Muting lasts an hour: it records the deadline in MUTE_FILE and starts a
+detached timer that runs this script with --unmute-if-expired. That flag only
+unmutes when still muted and the deadline has passed, so a timer left over from
+an earlier mute (since unmuted, or re-muted later) does nothing. The Claude
+Code status line reads MUTE_FILE to show the countdown, and calls the same
+flag itself in case the timer died (WSL restart).
+"""
+import os
+import re
+import subprocess
+import sys
+import time
+
+MUTE_SECONDS = 3600
+MUTE_FILE = os.path.expanduser("~/.cache/herdr-mute-until")
+
+path = os.environ.get("HERDR_CONFIG_PATH", os.path.expanduser("~/.config/herdr/config.toml"))
+text = open(path).read()
+
+
+def section(text, name):
+    m = re.search(r'(?ms)^\[' + re.escape(name) + r'\]\s*\n(.*?)(?=^\[|\Z)', text)
+    if not m:
+        sys.exit(f"no [{name}] section in config")
+    return m
+
+
+def get(text, name, key, default):
+    d = re.search(r'^' + key + r'\s*=\s*(.+?)\s*$', section(text, name).group(1), re.M)
+    return d.group(1).strip('"') if d else default
+
+
+def put(text, name, key, value):
+    m = section(text, name)
+    body = m.group(1)
+    line = f'{key} = {value}'
+    d = re.search(r'^' + key + r'\s*=.*$', body, re.M)
+    body = body[:d.start()] + line + body[d.end():] if d else line + "\n" + body
+    return text[:m.start(1)] + body + text[m.end(1):]
+
+
+muted = get(text, "ui.toast", "delivery", "off") == "off"   # unset means Herdr's default, off
+
+if sys.argv[1:] == ["--unmute-if-expired"]:
+    try:
+        until = float(open(MUTE_FILE).read())
+    except (OSError, ValueError):
+        sys.exit(0)   # no timed mute pending
+    if not muted or time.time() < until:
+        sys.exit(0)
+
+if muted:
+    text = put(text, "ui.toast", "delivery", '"herdr"')
+    text = put(text, "ui.sound", "enabled", "true")
+else:
+    text = put(text, "ui.toast", "delivery", '"off"')
+    text = put(text, "ui.sound", "enabled", "false")
+
+
+def toast(msg):
+    subprocess.run(["herdr", "notification", "show", msg, "--position", "bottom-right",
+                    "--sound", "none"], capture_output=True)
+
+
+if not muted:
+    toast("Notifications muted for 1 hour")   # confirm before they go quiet
+with open(path, "w") as f:
+    f.write(text)
+if muted:
+    try:
+        os.remove(MUTE_FILE)
+    except OSError:
+        pass
+else:
+    with open(MUTE_FILE, "w") as f:
+        f.write(str(time.time() + MUTE_SECONDS))
+    subprocess.Popen(["sh", "-c", f'sleep {MUTE_SECONDS + 1}; exec "$0" --unmute-if-expired',
+                      os.path.abspath(__file__)],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+subprocess.run(["herdr", "server", "reload-config"], capture_output=True, check=True)
+if muted:
+    toast("Notifications on")
+print("notifications: on" if muted else "notifications: muted")

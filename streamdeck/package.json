@@ -1,0 +1,23 @@
+{
+  "name": "workstation-deck",
+  "version": "0.1.0",
+  "description": "Stream Deck plugin: Herdr agents, terminal theme, YouTube Music, services page",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "install-plugin": "node scripts/build.mjs --install",
+    "check": "tsc"
+  },
+  "dependencies": {
+    "@elgato/streamdeck": "3.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.0",
+    "esbuild": "0.25.10",
+    "typescript": "5.9.3"
+  },
+  "overrides": {
+    "zod": "^4.6.6"
+  },
+  "private": true,
+  "type": "module"
+}
