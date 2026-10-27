@@ -25,6 +25,12 @@ python3 ~/.claude/skills/regrid/regrid.py             # apply
 Requires `HERDR_ENV=1`, which Herdr sets in its panes. Tests:
 `python3 -m unittest discover -s skills/regrid`.
 
+## /orchestrate
+
+Runs the [workboard orchestrator](orchestrator.md) in the current pane. It is
+linked by `orchestrator/setup.sh` rather than copied, because it calls the
+scripts in `orchestrator/`.
+
 ## /dark and /light
 
 Run [`term-theme`](terminal-and-theme.md#term-theme) with `--restart`, then tell
