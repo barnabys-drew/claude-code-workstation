@@ -39,6 +39,13 @@ board.
 
 Two details that make it reliable:
 
+- **One worktree per item.** In a git repo each item works in its own
+  worktree, `<repo>/.claude/worktrees/wb-<n>`, on branch `wb-<n>` from the repo's
+  current commit. Items in the same repo can run side by side without
+  committing over each other, uncommitted changes in your checkout stay out
+  of the work, and each result arrives as a branch for you to merge from
+  **Review**. The worktree is kept after the pane closes, so the item can be
+  resumed.
 - **Briefs go in files.** Typed into a terminal, a multi-line brief can submit
   line by line. Each worker is told "read your brief at …" instead.
 - **Prompts wait for `working`.** Right after a prompt lands, Herdr still
@@ -76,7 +83,7 @@ STATUS: done — <result>
 |---|---|
 | `continuing` | Sends "Proceed." (at most 6 times an hour per item, then treats it as a loop) |
 | `needs-decision` | Posts the question on the issue, sets **Needs you**, sends a push notification |
-| `done` | Posts the result, sets Review or Done, closes the pane (the session is kept), starts the next item |
+| `done` | Posts the result and branch, sets Review (anything committed) or Done, closes the pane (the session and worktree are kept), starts the next item |
 | missing | Asks once for the footer, then escalates |
 
 ## Guardrails
