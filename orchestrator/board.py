@@ -40,7 +40,7 @@ STATUS_HELP = {
     "Review": "Finished; look it over",
     "Done": "Finished",
 }
-FIELDS = ("Status", "Repo", "Session", "Pane", "Priority", "Gate")
+FIELDS = ("Status", "Checkout", "Session", "Pane", "Priority", "Gate")
 
 
 def gh(*args, stdin=None):
@@ -83,7 +83,7 @@ def init(number, issues_repo):
                                    for s, c in zip(STATUSES, STATUS_COLORS)]}}
     gh("api", "graphql", "--input", "-", stdin=json.dumps(body))
 
-    wanted = {"Repo": ("TEXT", None), "Session": ("TEXT", None), "Pane": ("TEXT", None),
+    wanted = {"Checkout": ("TEXT", None), "Session": ("TEXT", None), "Pane": ("TEXT", None),
               "Priority": ("SINGLE_SELECT", "P1,P2,P3"), "Gate": ("SINGLE_SELECT", "auto,ask")}
     for name, (kind, opts) in wanted.items():
         if name in fields:
@@ -103,7 +103,8 @@ def init(number, issues_repo):
         "fields": {f["name"]: {"id": f["id"],
                                "options": {o["name"]: o["id"] for o in f.get("options", [])}}
                    for f in field_list() if f["name"] in FIELDS},
-        # Repo field -> checkout. Anything not listed resolves to ~/code/<repo>.
+        # Checkout field -> path. Anything not listed resolves to ~/code/<checkout>. ("Repo" is
+        # reserved by GitHub for the built-in Repository field.)
         "repo_paths": {},
         "max_panes": 4,
         # Nudges ("proceed") per item per hour before it goes to Needs you.
@@ -228,7 +229,7 @@ def main():
                                  i["Priority"] or "P9", i["number"]))
         for i in rows:
             print(f"#{i['number']:<4} {i['Status'] or '-':<12} {i['Priority'] or '-':<3} "
-                  f"{i['Gate'] or '-':<5} {i['Repo'] or '-':<24} {i['title']}"
+                  f"{i['Gate'] or '-':<5} {i['Checkout'] or '-':<24} {i['title']}"
                   + (f"  [pane {i['Pane']}]" if i["Pane"] else ""))
     elif a.cmd == "show":
         i = find(cfg, a.n)
@@ -241,12 +242,12 @@ def main():
                  "--body", a.body or a.title).strip()
         item = gh_json("project", "item-add", str(cfg["project_number"]), "--owner", cfg["owner"],
                        "--url", url, "--format", "json")
-        set_fields(cfg, item["id"], Status=a.status, Repo=a.repo, Priority=a.priority, Gate=a.gate)
+        set_fields(cfg, item["id"], Status=a.status, Checkout=a.repo, Priority=a.priority, Gate=a.gate)
         print(url)
     elif a.cmd == "set":
         i = find(cfg, a.n)
         set_fields(cfg, i["item_id"], Status=a.status, Session=a.session, Pane=a.pane,
-                   Repo=a.repo, Priority=a.priority, Gate=a.gate)
+                   Checkout=a.repo, Priority=a.priority, Gate=a.gate)
     elif a.cmd == "comment":
         gh("issue", "comment", str(a.n), "-R", cfg["repo"], "--body", f"{MARKER} {a.text}")
     elif a.cmd == "answer":

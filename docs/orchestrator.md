@@ -50,13 +50,13 @@ Two details that make it reliable:
 Items are issues in a **private issues repo**, added to the Project. They
 don't live in the repo the work happens in, because an issue in a public repo
 is public even when the Project is private, and decision threads tend to
-discuss exactly what a public repo must not contain. The `Repo` field says
+discuss exactly what a public repo must not contain. The `Checkout` field says
 where the work happens.
 
 | Field | Values |
 |---|---|
 | Status | `Backlog` (ignored), `Ready`, `In progress`, `Needs you`, `Review`, `Done` |
-| Repo | checkout name under `~/code`, or mapped in `repo_paths` in the config |
+| Checkout | checkout name under `~/code`, or mapped in `repo_paths` in the config |
 | Priority | `P1`, `P2`, `P3`; P1 gets a free pane first |
 | Gate | `auto`, or `ask` (always finishes in Review) |
 | Session, Pane | filled in by the orchestrator, so a closed pane can be resumed |
@@ -107,7 +107,7 @@ fields, writes `~/.config/workboard/config.json`, and links
 `~/.claude/workboard` and `~/.claude/skills/orchestrate` to this checkout.
 
 In the config: `max_panes` (default 4), `max_nudges_per_hour` (6) and
-`repo_paths` for checkouts that aren't at `~/code/<Repo>`. Runtime state
+`repo_paths` for checkouts that aren't at `~/code/<Checkout>`. Runtime state
 (pane map, briefs, nudge counts, poll snapshot) lives in
 `~/.local/state/workboard/`.
 

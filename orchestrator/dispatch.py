@@ -159,7 +159,7 @@ def start(n):
         sys.exit(f"#{n} already has pane {panes[str(n)]}")
     if len(panes) >= cfg.get("max_panes", 4):
         sys.exit(f"FULL: {len(panes)} panes busy (max_panes {cfg.get('max_panes', 4)})")
-    cwd = repo_path(cfg, item["Repo"])
+    cwd = repo_path(cfg, item["Checkout"])
 
     os.makedirs(BRIEFS, exist_ok=True)
     brief = os.path.join(BRIEFS, f"{n}.md")
@@ -204,7 +204,7 @@ def send(n, text):
         sys.exit(f"#{n} has no pane and no session; use start")
     if len(panes) >= cfg.get("max_panes", 4):
         sys.exit("FULL: no free pane to resume into")
-    pane = new_pane(repo_path(cfg, item["Repo"]))
+    pane = new_pane(repo_path(cfg, item["Checkout"]))
     start_claude(pane, f"wb-{n}", "--resume", item["Session"])
     prompt(pane, text)
     panes[str(n)] = pane
