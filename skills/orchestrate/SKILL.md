@@ -44,7 +44,7 @@ Each event is one line from the Monitor. Handle it, then wait for the next.
 |---|---|
 | `continuing` | `dispatch.py nudge <n>`. On `BUDGET`, treat as a loop: escalate. |
 | `needs-decision` | Escalate with the question as written. |
-| `done` | `board.py comment <n> "<result>"`; set `Review` if the item's Gate is `ask` or the work changed anything a person should look at, else `Done`; `dispatch.py release <n>`; start the next `Ready` item. |
+| `done` | `board.py comment <n> "<result>"`, naming the branch `wb-<n>` if the item ran in a git repo; set `Review` if it committed anything (the user merges the branch) or its Gate is `ask`, else `Done`; `dispatch.py release <n>`; start the next `Ready` item. |
 | `pending` | Nothing written yet; ignore the event. |
 | `none` | Judge from the text. A question to the user → escalate. Otherwise send once: "End your reply with the STATUS line." If it happens again, escalate. |
 

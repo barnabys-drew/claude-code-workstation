@@ -44,7 +44,8 @@ keeps you moving.
   changing DNS or cloud resources. Stop and ask instead (needs-decision).
 - Follow the repo's CLAUDE.md and the user's global rules (git, public-repo
   data hygiene).
-- Before stopping, commit your work as those rules allow.
+- Before stopping, commit your work on your branch (see "Working copy"
+  above). Stage explicit paths only.
 
 End EVERY reply with exactly one final line in one of these forms:
 
@@ -99,6 +100,34 @@ def repo_path(cfg, repo):
     if not os.path.isdir(path):
         sys.exit(f"repo checkout not found: {path} (add it to repo_paths in config.json)")
     return path
+
+
+def git(*args, cwd):
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+
+
+def work_dir(n, checkout):
+    """Where item n's pane works, and its branch.
+
+    In a git repo every item gets its own worktree on branch wb-<n>, made from
+    the repo's current HEAD. Parallel items in the same repo then can't stage
+    or commit over each other, and uncommitted changes in the main checkout
+    don't leak into the work. Reused when the item is resumed. A checkout that
+    isn't a git repo is worked in place."""
+    top = git("rev-parse", "--show-toplevel", cwd=checkout)
+    if top.returncode:
+        return checkout, None
+    top = top.stdout.strip()
+    branch = f"wb-{n}"
+    path = os.path.join(top, ".claude", "worktrees", branch)
+    if os.path.isdir(path):
+        return path, branch
+    has_branch = git("rev-parse", "--verify", "--quiet", f"refs/heads/{branch}", cwd=top).returncode == 0
+    args = ["worktree", "add", path, branch] if has_branch else ["worktree", "add", "-b", branch, path, "HEAD"]
+    res = git(*args, cwd=top)
+    if res.returncode:
+        sys.exit(f"git worktree add failed in {top}: {res.stderr.strip()}")
+    return path, branch
 
 
 def new_pane(cwd):
@@ -159,13 +188,18 @@ def start(n):
         sys.exit(f"#{n} already has pane {panes[str(n)]}")
     if len(panes) >= cfg.get("max_panes", 4):
         sys.exit(f"FULL: {len(panes)} panes busy (max_panes {cfg.get('max_panes', 4)})")
-    cwd = repo_path(cfg, item["Checkout"])
+    checkout = repo_path(cfg, item["Checkout"])
+    cwd, branch = work_dir(n, checkout)
 
     os.makedirs(BRIEFS, exist_ok=True)
     brief = os.path.join(BRIEFS, f"{n}.md")
+    where = (f"Working copy: `{cwd}`, a git worktree of `{checkout}` on branch `{branch}`, "
+             f"made for this item.\n\nCommit your work on `{branch}`. Do not merge it into "
+             f"another branch or push: the owner reviews and merges the branch.\n\n"
+             if branch else f"Working copy: `{cwd}` (not a git repo).\n\n")
     with open(brief, "w") as f:
-        f.write(f"# Workboard #{n}: {item['title']}\n\nRepo: `{cwd}`  \n"
-                f"Issue: {item['url']}  \nGate: {item['Gate'] or 'auto'}\n\n"
+        f.write(f"# Workboard #{n}: {item['title']}\n\n"
+                f"Issue: {item['url']}  \nGate: {item['Gate'] or 'auto'}\n\n{where}"
                 f"## Goal\n\n{item['body'] or item['title']}\n\n{PROTOCOL}")
 
     pane = new_pane(cwd)
@@ -177,7 +211,8 @@ def start(n):
     save(PANES, panes)
     board.set_fields(cfg, item["item_id"], Status="In progress", Pane=pane, Session=sid or None)
     board.gh("issue", "comment", str(n), "-R", cfg["repo"], "--body",
-             f"{board.MARKER} started in pane `{pane}`" + (f", session `{sid}`" if sid else ""))
+             f"{board.MARKER} started in pane `{pane}`" + (f", session `{sid}`" if sid else "")
+             + (f", branch `{branch}`" if branch else ""))
     print(f"#{n} -> pane {pane} session {sid or '?'}")
 
 
@@ -204,7 +239,7 @@ def send(n, text):
         sys.exit(f"#{n} has no pane and no session; use start")
     if len(panes) >= cfg.get("max_panes", 4):
         sys.exit("FULL: no free pane to resume into")
-    pane = new_pane(repo_path(cfg, item["Checkout"]))
+    pane = new_pane(work_dir(n, repo_path(cfg, item["Checkout"]))[0])
     start_claude(pane, f"wb-{n}", "--resume", item["Session"])
     prompt(pane, text)
     panes[str(n)] = pane
