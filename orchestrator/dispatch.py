@@ -130,14 +130,28 @@ def work_dir(n, checkout):
     return path, branch
 
 
+def grid_split(panes):
+    """Which pane to split, and which way, so the tab grows as a grid: the
+    biggest pane (top-left first on ties), split side by side only if both
+    halves stay at least as wide as tall on screen, else split down. Cells
+    are ~2x taller than wide, so that is width / 2 >= 2 * height. On a wide
+    terminal: 1 -> 2 side by side -> 2x2 -> 3x2 -> ..."""
+    p = max(panes, key=lambda p: (p["rect"]["width"] * p["rect"]["height"],
+                                  -p["rect"]["y"], -p["rect"]["x"]))
+    w, h = p["rect"]["width"], p["rect"]["height"]
+    return p["pane_id"], "right" if w >= 4 * h else "down"
+
+
 def new_pane(cwd):
     """A shell pane in the workboard tab, creating the tab if needed."""
     tab = load(TAB, {}).get("tab")
     if tab and herdr("tab", "get", tab, check=False).get("result"):
-        last = [p["pane_id"] for p in herdr("pane", "list")["result"]["panes"]
-                if p.get("tab_id") == tab]
-        if last:
-            return herdr("pane", "split", last[-1], "--direction", "right",
+        in_tab = [p["pane_id"] for p in herdr("pane", "list")["result"]["panes"]
+                  if p.get("tab_id") == tab]
+        if in_tab:
+            layout = herdr("pane", "layout", "--pane", in_tab[0])["result"]["layout"]
+            target, direction = grid_split(layout["panes"])
+            return herdr("pane", "split", target, "--direction", direction,
                          "--cwd", cwd)["result"]["pane"]["pane_id"]
     res = herdr("tab", "create", "--label", "workboard", "--cwd", cwd, "--no-focus")["result"]
     save(TAB, {"tab": res["tab"]["tab_id"]})
